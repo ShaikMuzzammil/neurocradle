@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
     await resend.emails.send({
       from: 'NeuroCradle <onboarding@resend.dev>',
       to: ADMIN_EMAIL,
-      replyTo: email,
+      reply_To: email,
       subject: `[NeuroCradle] [${priority}] ${category}: ${subject || 'New Contact Submission'}`,
       html: `
 <!DOCTYPE html>
