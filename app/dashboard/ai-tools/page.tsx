@@ -1,0 +1,795 @@
+'use client'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { GlassCard } from '@/components/ui/GlassCard'
+import { MagneticButton } from '@/components/ui/MagneticButton'
+import {
+  Code2, Activity, Image, BarChart2, Zap, Play, Square,
+  RefreshCw, Download, Send, Hand, ChevronRight, Loader2,
+  Copy, Check, Sparkles,
+} from 'lucide-react'
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import toast from 'react-hot-toast'
+import {
+  ScatterChart, Scatter, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  HeatMapRect,
+} from 'recharts'
+
+type Tab = 'gesture-code' | 'visualizer' | 'code-review' | 'analytics' | 'gallery'
+
+const TABS: { id: Tab; label: string; icon: React.ReactNode; color: string }[] = [
+  { id: 'gesture-code', label: 'Gesture→Code', icon: <Hand className="w-4 h-4" />, color: '#00F5FF' },
+  { id: 'visualizer', label: 'Algorithm Viz', icon: <Activity className="w-4 h-4" />, color: '#FF00FF' },
+  { id: 'code-review', label: 'Code Review', icon: <Code2 className="w-4 h-4" />, color: '#FFE500' },
+  { id: 'analytics', label: 'Analytics', icon: <BarChart2 className="w-4 h-4" />, color: '#00FF88' },
+  { id: 'gallery', label: 'Art Gallery', icon: <Image className="w-4 h-4" />, color: '#8B00FF' },
+]
+
+// ─── Gesture to Code ──────────────────────────────────────────────────────────
+const GESTURE_CODE_MAP: Record<string, { lang: string; code: string; desc: string }> = {
+  fist: {
+    lang: 'python',
+    desc: 'Fist → loop / iteration pattern',
+    code: `def loop_pattern(items: list) -> list:
+    """Fist gesture: closed loop iteration"""
+    result = []
+    for i, item in enumerate(items):
+        processed = transform(item, index=i)
+        result.append(processed)
+    return result
+
+def transform(item, index: int):
+    return {"value": item, "idx": index, "hash": hash(item)}`,
+  },
+  peace: {
+    lang: 'python',
+    desc: 'Peace ✌️ → parallel / dual processing',
+    code: `import asyncio
+from concurrent.futures import ThreadPoolExecutor
+
+async def dual_process(stream_a, stream_b):
+    """Peace gesture: two parallel operations"""
+    async with asyncio.TaskGroup() as tg:
+        task_a = tg.create_task(process_stream(stream_a))
+        task_b = tg.create_task(process_stream(stream_b))
+    return task_a.result(), task_b.result()
+
+async def process_stream(stream):
+    return [item async for item in stream]`,
+  },
+  open_palm: {
+    lang: 'python',
+    desc: 'Open Palm → spread / distribute data',
+    code: `from dataclasses import dataclass
+from typing import TypeVar, Generic
+
+T = TypeVar('T')
+
+@dataclass
+class Distributed(Generic[T]):
+    """Open palm: spread across nodes"""
+    shards: list[list[T]]
+    node_count: int
+
+def distribute(data: list[T], nodes: int) -> Distributed[T]:
+    size = len(data) // nodes
+    return Distributed(
+        shards=[data[i:i+size] for i in range(0, len(data), size)],
+        node_count=nodes
+    )`,
+  },
+  pinch: {
+    lang: 'python',
+    desc: 'Pinch → compress / filter data',
+    code: `from typing import Callable, Iterable
+
+def pinch(
+    data: Iterable,
+    predicate: Callable = lambda x: x is not None,
+    transform: Callable = lambda x: x
+) -> list:
+    """Pinch gesture: compress and filter"""
+    return [
+        transform(item)
+        for item in data
+        if predicate(item)
+    ]
+
+# Example: filter non-null and square values
+result = pinch(
+    [1, None, 3, None, 5],
+    predicate=lambda x: x is not None,
+    transform=lambda x: x ** 2
+)  # → [1, 9, 25]`,
+  },
+  pointing: {
+    lang: 'python',
+    desc: 'Pointing → select / index access',
+    code: `from typing import Optional, TypeVar, overload
+
+T = TypeVar('T')
+
+class SmartIndex:
+    """Pointing gesture: precise element selection"""
+
+    def __init__(self, data: list):
+        self._data = data
+        self._cursor = 0
+
+    def point_at(self, index: int) -> Optional[any]:
+        if 0 <= index < len(self._data):
+            self._cursor = index
+            return self._data[index]
+        return None
+
+    @property
+    def current(self):
+        return self._data[self._cursor]`,
+  },
+}
+
+function GestureCodeTab() {
+  const [selectedGesture, setSelectedGesture] = useState('open_palm')
+  const [loading, setLoading] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  const current = GESTURE_CODE_MAP[selectedGesture]
+
+  const copyCode = async () => {
+    await navigator.clipboard.writeText(current.code)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+    toast.success('Code copied!')
+  }
+
+  return (
+    <div className="grid lg:grid-cols-2 gap-6 p-6">
+      {/* Left: Gesture selector */}
+      <div>
+        <h3 className="font-orbitron font-semibold text-base text-white mb-2">Select Gesture</h3>
+        <p className="font-exo text-sm mb-6" style={{ color: 'rgba(224,232,255,0.5)' }}>
+          Each hand gesture maps to a unique code pattern generated by the AI classifier.
+        </p>
+        <div className="space-y-3">
+          {Object.entries(GESTURE_CODE_MAP).map(([key, val]) => (
+            <motion.button
+              key={key}
+              whileHover={{ scale: 1.01 }}
+              whileTap={{ scale: 0.99 }}
+              onClick={() => setSelectedGesture(key)}
+              className="w-full text-left px-4 py-3 rounded-xl transition-all duration-200 flex items-center justify-between"
+              style={{
+                background: selectedGesture === key ? 'rgba(0,245,255,0.1)' : 'rgba(255,255,255,0.03)',
+                border: `1px solid ${selectedGesture === key ? 'rgba(0,245,255,0.35)' : 'rgba(255,255,255,0.07)'}`,
+                cursor: 'none',
+              }}
+            >
+              <div className="flex items-center gap-3">
+                <div
+                  className="w-8 h-8 rounded-lg flex items-center justify-center font-orbitron text-sm"
+                  style={{
+                    background: selectedGesture === key ? 'rgba(0,245,255,0.15)' : 'rgba(255,255,255,0.05)',
+                    color: selectedGesture === key ? '#00F5FF' : 'rgba(224,232,255,0.5)',
+                  }}
+                >
+                  {key === 'fist' ? '✊' : key === 'peace' ? '✌️' : key === 'open_palm' ? '🖐️' : key === 'pinch' ? '🤏' : '👆'}
+                </div>
+                <div>
+                  <div className="font-exo text-sm font-semibold" style={{ color: selectedGesture === key ? '#00F5FF' : 'rgba(224,232,255,0.8)' }}>
+                    {key.replace('_', ' ').toUpperCase()}
+                  </div>
+                  <div className="font-exo text-xs" style={{ color: 'rgba(224,232,255,0.4)' }}>{val.desc}</div>
+                </div>
+              </div>
+              {selectedGesture === key && <ChevronRight className="w-4 h-4" style={{ color: '#00F5FF' }} />}
+            </motion.button>
+          ))}
+        </div>
+      </div>
+
+      {/* Right: Code output */}
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="font-orbitron font-semibold text-base text-white">Generated Code</h3>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="font-mono text-xs px-2 py-0.5 rounded" style={{ background: 'rgba(0,245,255,0.1)', color: '#00F5FF', border: '1px solid rgba(0,245,255,0.25)' }}>
+                {current.lang}
+              </span>
+              <span className="font-exo text-xs" style={{ color: 'rgba(224,232,255,0.4)' }}>{current.desc}</span>
+            </div>
+          </div>
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={copyCode}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-exo text-xs transition-all"
+            style={{
+              background: copied ? 'rgba(0,255,136,0.1)' : 'rgba(255,255,255,0.05)',
+              border: `1px solid ${copied ? 'rgba(0,255,136,0.3)' : 'rgba(255,255,255,0.1)'}`,
+              color: copied ? '#00FF88' : 'rgba(224,232,255,0.6)',
+              cursor: 'none',
+            }}
+          >
+            {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+            {copied ? 'Copied!' : 'Copy'}
+          </motion.button>
+        </div>
+
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={selectedGesture}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.2 }}
+            className="code-block"
+            data-lang={current.lang}
+            style={{ fontSize: '12px', lineHeight: '1.7', minHeight: '300px' }}
+          >
+            <pre style={{ color: '#e0e8ff', whiteSpace: 'pre-wrap' }}>
+              {current.code.split('\n').map((line, i) => {
+                // Basic syntax highlighting
+                const highlighted = line
+                  .replace(/(def |class |return |import |from |for |in |if |else:|elif |async |await |with )/g, '<span style="color:#FF00FF">$1</span>')
+                  .replace(/""".*?"""/g, '<span style="color:rgba(0,245,255,0.5)">$&</span>')
+                  .replace(/(#.*$)/g, '<span style="color:rgba(224,232,255,0.3)">$1</span>')
+                  .replace(/("[^"]*"|'[^']*')/g, '<span style="color:#FFE500">$1</span>')
+                  .replace(/(\b\d+\b)/g, '<span style="color:#00FF88">$1</span>')
+                return (
+                  <span key={i}>
+                    <span style={{ color: 'rgba(224,232,255,0.2)', userSelect: 'none', marginRight: '16px', fontSize: '10px' }}>
+                      {String(i + 1).padStart(2, ' ')}
+                    </span>
+                    <span dangerouslySetInnerHTML={{ __html: highlighted }} />
+                    {'\n'}
+                  </span>
+                )
+              })}
+            </pre>
+          </motion.div>
+        </AnimatePresence>
+      </div>
+    </div>
+  )
+}
+
+// ─── Algorithm Visualizer ─────────────────────────────────────────────────────
+type AlgoType = 'bubble' | 'bfs' | 'dijkstra'
+
+function AlgorithmVisualizerTab() {
+  const [algo, setAlgo] = useState<AlgoType>('bubble')
+  const [arr, setArr] = useState<number[]>([])
+  const [active, setActive] = useState<number[]>([])
+  const [sorted, setSorted] = useState<number[]>([])
+  const [running, setRunning] = useState(false)
+  const [speed, setSpeed] = useState(200)
+  const [gestureSpeed, setGestureSpeed] = useState<number | null>(null)
+  const runRef = useRef(false)
+  const stepRef = useRef(0)
+
+  const generateArr = useCallback(() => {
+    setArr(Array.from({ length: 32 }, () => Math.floor(Math.random() * 95) + 5))
+    setActive([])
+    setSorted([])
+    stepRef.current = 0
+  }, [])
+
+  useEffect(() => { generateArr() }, [generateArr])
+
+  const delay = (ms: number) => new Promise(r => setTimeout(r, ms))
+  const effectiveSpeed = gestureSpeed ?? speed
+
+  const runBubble = async () => {
+    runRef.current = true
+    setRunning(true)
+    const a = [...arr]
+    const n = a.length
+    const sortedIdx: number[] = []
+
+    for (let i = 0; i < n - 1 && runRef.current; i++) {
+      for (let j = 0; j < n - i - 1 && runRef.current; j++) {
+        setActive([j, j + 1])
+        await delay(effectiveSpeed)
+        if (a[j] > a[j + 1]) {
+          [a[j], a[j + 1]] = [a[j + 1], a[j]]
+          setArr([...a])
+        }
+      }
+      sortedIdx.push(n - 1 - i)
+      setSorted([...sortedIdx])
+    }
+    setSorted(Array.from({ length: n }, (_, i) => i))
+    setActive([])
+    setRunning(false)
+    runRef.current = false
+  }
+
+  const stopAlgo = () => { runRef.current = false; setRunning(false); setActive([]) }
+
+  return (
+    <div className="p-6">
+      <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
+        <div>
+          <h3 className="font-orbitron font-semibold text-base text-white mb-1">Algorithm Visualizer</h3>
+          <p className="font-exo text-sm" style={{ color: 'rgba(224,232,255,0.5)' }}>
+            Hand spread in Hand Lab controls speed. Open wide = fast. Fist = slow.
+          </p>
+        </div>
+        <div className="flex gap-2">
+          {(['bubble', 'bfs', 'dijkstra'] as AlgoType[]).map(a => (
+            <button
+              key={a}
+              onClick={() => { setAlgo(a); generateArr() }}
+              className="px-3 py-1.5 rounded-lg font-exo text-xs capitalize transition-all"
+              style={{
+                background: algo === a ? 'rgba(255,0,255,0.12)' : 'rgba(255,255,255,0.04)',
+                border: `1px solid ${algo === a ? 'rgba(255,0,255,0.35)' : 'rgba(255,255,255,0.1)'}`,
+                color: algo === a ? '#FF00FF' : 'rgba(224,232,255,0.55)',
+                cursor: 'none',
+              }}
+            >
+              {a === 'bubble' ? 'Bubble Sort' : a === 'bfs' ? 'BFS' : 'Dijkstra'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Speed Control */}
+      <div className="mb-6 flex items-center gap-4">
+        <span className="font-exo text-xs w-20 flex-shrink-0" style={{ color: 'rgba(224,232,255,0.5)' }}>Speed (ms)</span>
+        <input
+          type="range" min="20" max="600" value={speed}
+          onChange={e => setSpeed(Number(e.target.value))}
+          className="flex-1" style={{ accentColor: '#FF00FF', cursor: 'none' }}
+        />
+        <span className="font-mono text-xs w-16" style={{ color: '#FF00FF' }}>{speed}ms</span>
+        <div className="flex gap-2 ml-2">
+          <button
+            onClick={running ? stopAlgo : runBubble}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg font-exo text-xs font-medium transition-all"
+            style={{
+              background: running ? 'rgba(255,68,68,0.12)' : 'rgba(255,0,255,0.12)',
+              border: `1px solid ${running ? 'rgba(255,68,68,0.3)' : 'rgba(255,0,255,0.3)'}`,
+              color: running ? '#FF4444' : '#FF00FF',
+              cursor: 'none',
+            }}
+          >
+            {running ? <><Square className="w-3.5 h-3.5" />Stop</> : <><Play className="w-3.5 h-3.5" />Run</>}
+          </button>
+          <button
+            onClick={generateArr}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg font-exo text-xs transition-all"
+            style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(224,232,255,0.6)', cursor: 'none' }}
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+
+      {/* Bar Chart Visualization */}
+      <div
+        className="flex items-end gap-0.5 h-56 px-4 py-4 rounded-xl"
+        style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,245,255,0.1)' }}
+      >
+        {arr.map((val, i) => {
+          const isActive = active.includes(i)
+          const isSorted = sorted.includes(i)
+          const color = isActive ? '#FFE500' : isSorted ? '#00FF88' : '#00F5FF'
+          return (
+            <motion.div
+              key={i}
+              layout
+              className="flex-1 rounded-t-sm transition-colors duration-100"
+              style={{
+                height: `${val}%`,
+                background: isActive
+                  ? 'linear-gradient(to top, #FFE500, #FF8800)'
+                  : isSorted
+                  ? 'linear-gradient(to top, #00FF88, #00D4AA)'
+                  : 'linear-gradient(to top, #00F5FF, #0060FF)',
+                boxShadow: isActive ? `0 0 12px #FFE500` : isSorted ? `0 0 6px #00FF88` : 'none',
+                minWidth: '2px',
+              }}
+            />
+          )
+        })}
+      </div>
+
+      <div className="flex items-center justify-between mt-3 font-exo text-xs" style={{ color: 'rgba(224,232,255,0.35)' }}>
+        <span>{arr.length} elements</span>
+        <div className="flex gap-4">
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm inline-block" style={{ background: '#00F5FF' }} />Unsorted</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm inline-block" style={{ background: '#FFE500' }} />Comparing</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm inline-block" style={{ background: '#00FF88' }} />Sorted</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Code Reviewer ────────────────────────────────────────────────────────────
+function CodeReviewTab() {
+  const [code, setCode] = useState(`def process_data(items):
+    result = []
+    for i in range(len(items)):
+        if items[i] != None:
+            result.append(items[i] * 2)
+    return result`)
+  const [review, setReview] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  const reviewCode = async () => {
+    setLoading(true)
+    setReview(null)
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}/tools/review-code`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+      })
+      const data = await res.json()
+      setReview(data.review)
+    } catch {
+      // Fallback mock review
+      setReview(`## Code Review Analysis
+
+### 🔴 Issues Found
+
+**1. Anti-pattern: \`range(len(...))\`**
+- Use \`for item in items:\` directly instead of index-based iteration
+- PEP 8 and Pythonic style guidelines prefer direct iteration
+
+**2. None comparison using \`!=\`**
+- Replace \`items[i] != None\` with \`items[i] is not None\`
+- None should always be compared with identity operators
+
+**3. Inefficient list building**
+- Consider using a list comprehension for clarity and performance
+
+### ✅ Suggested Refactor
+
+\`\`\`python
+def process_data(items: list) -> list:
+    """Process items by doubling non-null values."""
+    return [item * 2 for item in items if item is not None]
+\`\`\`
+
+### 📊 Metrics
+- **Readability**: 5/10 → 9/10
+- **Performance**: ~1.3x speedup with comprehension
+- **Type Safety**: Add type hints for better IDE support`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="grid lg:grid-cols-2 gap-6 p-6">
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-orbitron font-semibold text-sm text-white">Input Code</h3>
+          <span className="font-mono text-xs px-2 py-0.5 rounded" style={{ background: 'rgba(255,229,0,0.1)', color: '#FFE500', border: '1px solid rgba(255,229,0,0.25)' }}>
+            Python / JS / TS
+          </span>
+        </div>
+        <textarea
+          value={code}
+          onChange={e => setCode(e.target.value)}
+          rows={16}
+          className="w-full font-mono text-xs p-4 rounded-xl resize-none"
+          style={{
+            background: 'rgba(0,0,0,0.5)',
+            border: '1px solid rgba(255,229,0,0.15)',
+            color: '#e0e8ff',
+            outline: 'none',
+            lineHeight: '1.7',
+            cursor: 'none',
+          }}
+          placeholder="Paste your code here..."
+        />
+        <MagneticButton variant="fill" className="mt-3 text-xs py-2.5 w-full justify-center" onClick={reviewCode} disabled={loading}>
+          {loading ? <><Loader2 className="w-3.5 h-3.5" />Analyzing...</> : <><Sparkles className="w-3.5 h-3.5" />Review with Claude AI</>}
+        </MagneticButton>
+      </div>
+
+      <div>
+        <h3 className="font-orbitron font-semibold text-sm text-white mb-3">AI Review</h3>
+        <div
+          className="h-full min-h-64 rounded-xl p-4 font-exo text-sm overflow-y-auto"
+          style={{
+            background: 'rgba(0,0,0,0.4)',
+            border: '1px solid rgba(255,229,0,0.1)',
+            color: 'rgba(224,232,255,0.8)',
+            lineHeight: '1.8',
+            maxHeight: '420px',
+          }}
+        >
+          {loading ? (
+            <div className="flex flex-col items-center justify-center h-32 gap-3">
+              <div className="spinner-neon" />
+              <span className="font-exo text-xs" style={{ color: 'rgba(224,232,255,0.4)' }}>Claude is analyzing your code...</span>
+            </div>
+          ) : review ? (
+            <div style={{ whiteSpace: 'pre-wrap' }}>
+              {review.split('\n').map((line, i) => (
+                <span key={i}>
+                  {line.startsWith('##') ? (
+                    <strong style={{ color: '#00F5FF', fontSize: '14px' }}>{line.replace(/##+ ?/, '')}</strong>
+                  ) : line.startsWith('**') ? (
+                    <strong style={{ color: '#FFE500' }}>{line.replace(/\*\*/g, '')}</strong>
+                  ) : line.startsWith('- ') ? (
+                    <span><span style={{ color: '#FF00FF' }}>• </span>{line.slice(2)}</span>
+                  ) : (
+                    <span>{line}</span>
+                  )}
+                  {'\n'}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center h-32 gap-2 text-center">
+              <Code2 className="w-8 h-8" style={{ color: 'rgba(255,229,0,0.3)' }} />
+              <p className="font-exo text-xs" style={{ color: 'rgba(224,232,255,0.3)' }}>
+                Paste your code and click Review.<br />Claude will analyze it for issues, style, and performance.
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Analytics Tab ────────────────────────────────────────────────────────────
+function AnalyticsTab() {
+  const heatmapData = Array.from({ length: 7 }, (_, day) =>
+    Array.from({ length: 24 }, (_, hour) => ({
+      day, hour,
+      value: Math.floor(Math.random() * 100),
+    }))
+  ).flat()
+
+  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
+  return (
+    <div className="p-6">
+      <h3 className="font-orbitron font-semibold text-base text-white mb-2">Session Analytics</h3>
+      <p className="font-exo text-sm mb-6" style={{ color: 'rgba(224,232,255,0.5)' }}>
+        Gesture frequency heatmap across time. Darker = more gestures detected.
+      </p>
+
+      {/* Heatmap */}
+      <GlassCard className="p-4 mb-6">
+        <h4 className="font-orbitron text-xs font-semibold text-white mb-4">Gesture Heatmap — Last 7 Days × 24h</h4>
+        <div className="overflow-x-auto">
+          <div style={{ display: 'grid', gridTemplateRows: `repeat(7, 1fr)`, gap: '3px', minWidth: '600px' }}>
+            {days.map((day, dIdx) => (
+              <div key={day} style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                <span className="font-exo text-xs w-8 flex-shrink-0 text-right" style={{ color: 'rgba(224,232,255,0.4)' }}>{day}</span>
+                {Array.from({ length: 24 }, (_, hIdx) => {
+                  const val = heatmapData.find(d => d.day === dIdx && d.hour === hIdx)?.value ?? 0
+                  const intensity = val / 100
+                  return (
+                    <motion.div
+                      key={hIdx}
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ delay: dIdx * 0.03 + hIdx * 0.005 }}
+                      className="rounded-sm flex-1"
+                      style={{
+                        height: '18px',
+                        background: `rgba(0, 245, 255, ${0.05 + intensity * 0.85})`,
+                        border: val > 70 ? '1px solid rgba(0,245,255,0.4)' : '1px solid transparent',
+                        boxShadow: val > 80 ? '0 0 4px rgba(0,245,255,0.4)' : 'none',
+                      }}
+                      title={`${day} ${hIdx}:00 — ${val} gestures`}
+                    />
+                  )
+                })}
+              </div>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: '3px', marginTop: '4px', paddingLeft: '44px' }}>
+            {Array.from({ length: 24 }, (_, i) => (
+              <span key={i} className="flex-1 font-mono text-center" style={{ fontSize: '8px', color: 'rgba(224,232,255,0.25)' }}>
+                {i % 6 === 0 ? `${i}h` : ''}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {/* Legend */}
+        <div className="flex items-center gap-3 mt-4">
+          <span className="font-exo text-xs" style={{ color: 'rgba(224,232,255,0.4)' }}>Less</span>
+          {[0.1, 0.3, 0.5, 0.7, 0.9].map(v => (
+            <div key={v} className="w-4 h-4 rounded-sm" style={{ background: `rgba(0,245,255,${v})` }} />
+          ))}
+          <span className="font-exo text-xs" style={{ color: 'rgba(224,232,255,0.4)' }}>More</span>
+        </div>
+      </GlassCard>
+
+      {/* Session Summary Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {[
+          { label: 'Peak Hour', value: '14:00', sub: 'Most active', color: '#00F5FF' },
+          { label: 'Best Day', value: 'Saturday', sub: 'Most gestures', color: '#FF00FF' },
+          { label: 'Avg Session', value: '22 min', sub: 'Per session', color: '#FFE500' },
+          { label: 'Streak', value: '7 days', sub: 'Current streak', color: '#00FF88' },
+        ].map(s => (
+          <GlassCard key={s.label} className="p-4" glow={s.color === '#00F5FF' ? 'cyan' : s.color === '#FF00FF' ? 'magenta' : 'yellow'}>
+            <div className="font-orbitron font-bold text-xl mb-1" style={{ color: s.color }}>{s.value}</div>
+            <div className="font-exo text-xs font-semibold text-white">{s.label}</div>
+            <div className="font-exo text-xs" style={{ color: 'rgba(224,232,255,0.4)' }}>{s.sub}</div>
+          </GlassCard>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ─── Art Gallery ──────────────────────────────────────────────────────────────
+const mockGallery = [
+  { id: 1, title: 'Digital Bloom', user: 'AK', likes: 47, color: '#00F5FF', description: 'Open palm spiral' },
+  { id: 2, title: 'Neon Vortex', user: 'MR', likes: 31, color: '#FF00FF', description: 'Circular fist motion' },
+  { id: 3, title: 'Cyan Web', user: 'JS', likes: 58, color: '#00F5FF', description: 'Finger spread pattern' },
+  { id: 4, title: 'Magenta Storm', user: 'AY', likes: 23, color: '#FF00FF', description: 'Peace + pinch combo' },
+  { id: 5, title: 'Point Cloud', user: 'TC', likes: 41, color: '#FFE500', description: 'Multi-finger pointing' },
+  { id: 6, title: 'Elastic Grid', user: 'PK', likes: 66, color: '#8B00FF', description: 'String art composition' },
+]
+
+function ArtGalleryTab() {
+  const [liked, setLiked] = useState<Set<number>>(new Set())
+
+  return (
+    <div className="p-6">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h3 className="font-orbitron font-semibold text-base text-white">Gesture Art Gallery</h3>
+          <p className="font-exo text-sm mt-1" style={{ color: 'rgba(224,232,255,0.5)' }}>Canvas frames saved from Hand Lab sessions</p>
+        </div>
+        <MagneticButton variant="cyan" className="text-xs py-2 px-4">
+          <Download className="w-3.5 h-3.5" /> Export Mine
+        </MagneticButton>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+        {mockGallery.map((item, i) => (
+          <motion.div
+            key={item.id}
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: i * 0.07 }}
+            whileHover={{ y: -4 }}
+          >
+            <GlassCard className="overflow-hidden" glow={item.color === '#00F5FF' ? 'cyan' : item.color === '#FF00FF' ? 'magenta' : 'yellow'} hover={false}>
+              {/* Thumbnail - procedural art */}
+              <div
+                className="aspect-video relative overflow-hidden"
+                style={{ background: `radial-gradient(ellipse at center, ${item.color}30 0%, #050A1A 100%)` }}
+              >
+                <svg viewBox="0 0 200 112" className="absolute inset-0 w-full h-full">
+                  {/* Generate unique art patterns per item */}
+                  {Array.from({ length: 8 }, (_, j) => {
+                    const angle = (j / 8) * Math.PI * 2 + item.id * 0.5
+                    const r = 30 + j * 5
+                    const x1 = 100 + r * Math.cos(angle)
+                    const y1 = 56 + r * Math.sin(angle) * 0.6
+                    const x2 = 100 + r * Math.cos(angle + Math.PI)
+                    const y2 = 56 + r * Math.sin(angle + Math.PI) * 0.6
+                    return (
+                      <line key={j} x1={x1} y1={y1} x2={x2} y2={y2}
+                        stroke={item.color} strokeWidth="0.8" opacity={0.6 - j * 0.05}>
+                        <animateTransform attributeName="transform" type="rotate"
+                          values="0 100 56;360 100 56" dur={`${6 + j}s`} repeatCount="indefinite" />
+                      </line>
+                    )
+                  })}
+                  {Array.from({ length: 5 }, (_, j) => (
+                    <circle key={j} cx={100 + (j - 2) * 20} cy={56} r={2 + j}
+                      fill={item.color} opacity={0.7 - j * 0.1}>
+                      <animate attributeName="r" values={`${2+j};${4+j};${2+j}`} dur={`${2+j*0.5}s`} repeatCount="indefinite" />
+                    </circle>
+                  ))}
+                </svg>
+              </div>
+
+              <div className="p-3">
+                <div className="flex items-start justify-between mb-1">
+                  <div>
+                    <h4 className="font-orbitron font-semibold text-xs text-white">{item.title}</h4>
+                    <p className="font-exo text-[10px] mt-0.5" style={{ color: 'rgba(224,232,255,0.4)' }}>{item.description}</p>
+                  </div>
+                  <div className="w-6 h-6 rounded-full flex items-center justify-center font-orbitron font-bold text-[9px] flex-shrink-0"
+                    style={{ background: `${item.color}20`, color: item.color }}>
+                    {item.user}
+                  </div>
+                </div>
+                <div className="flex items-center justify-between mt-2">
+                  <button
+                    onClick={() => setLiked(l => {
+                      const n = new Set(l)
+                      n.has(item.id) ? n.delete(item.id) : n.add(item.id)
+                      return n
+                    })}
+                    className="flex items-center gap-1 font-exo text-xs transition-colors"
+                    style={{ color: liked.has(item.id) ? '#FF00FF' : 'rgba(224,232,255,0.4)', cursor: 'none' }}
+                  >
+                    <motion.span
+                      animate={{ scale: liked.has(item.id) ? [1, 1.4, 1] : 1 }}
+                      transition={{ duration: 0.3 }}
+                    >
+                      {liked.has(item.id) ? '♥' : '♡'}
+                    </motion.span>
+                    {item.likes + (liked.has(item.id) ? 1 : 0)}
+                  </button>
+                </div>
+              </div>
+            </GlassCard>
+          </motion.div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+export default function AIToolsPage() {
+  const [activeTab, setActiveTab] = useState<Tab>('gesture-code')
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Tab Bar */}
+      <div
+        className="flex items-center gap-1 px-4 py-3 flex-shrink-0 overflow-x-auto"
+        style={{ background: 'rgba(5,10,26,0.98)', borderBottom: '1px solid rgba(0,245,255,0.08)' }}
+      >
+        {TABS.map(tab => (
+          <motion.button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl font-exo text-sm font-medium whitespace-nowrap relative flex-shrink-0 transition-colors duration-200"
+            style={{
+              background: activeTab === tab.id ? `${tab.color}12` : 'transparent',
+              color: activeTab === tab.id ? tab.color : 'rgba(224,232,255,0.5)',
+              cursor: 'none',
+            }}
+            whileHover={{ backgroundColor: `${tab.color}08` }}
+          >
+            <span style={{ color: activeTab === tab.id ? tab.color : 'rgba(224,232,255,0.35)' }}>
+              {tab.icon}
+            </span>
+            {tab.label}
+            {activeTab === tab.id && (
+              <motion.div
+                layoutId="tab-indicator"
+                className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full"
+                style={{ background: tab.color, boxShadow: `0 0 8px ${tab.color}` }}
+              />
+            )}
+          </motion.button>
+        ))}
+      </div>
+
+      {/* Tab Content */}
+      <div className="flex-1 overflow-y-auto">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={activeTab}
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+            className="h-full"
+          >
+            {activeTab === 'gesture-code' && <GestureCodeTab />}
+            {activeTab === 'visualizer' && <AlgorithmVisualizerTab />}
+            {activeTab === 'code-review' && <CodeReviewTab />}
+            {activeTab === 'analytics' && <AnalyticsTab />}
+            {activeTab === 'gallery' && <ArtGalleryTab />}
+          </motion.div>
+        </AnimatePresence>
+      </div>
+    </div>
+  )
+}
