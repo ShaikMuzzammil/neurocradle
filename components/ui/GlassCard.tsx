@@ -1,8 +1,8 @@
 'use client'
-import { motion, type MotionProps } from 'framer-motion'
+import { motion, type HTMLMotionProps } from 'framer-motion'
 import { type ReactNode } from 'react'
 
-interface GlassCardProps extends MotionProps {
+interface GlassCardProps extends HTMLMotionProps<"div"> {
   children: ReactNode
   className?: string
   glow?: 'cyan' | 'magenta' | 'yellow' | 'none'
