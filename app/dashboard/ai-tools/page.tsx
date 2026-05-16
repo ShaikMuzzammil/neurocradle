@@ -8,7 +8,7 @@ import {
   RefreshCw, Download, Send, Hand, ChevronRight, Loader2,
   Copy, Check, Sparkles,
 } from 'lucide-react'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+
 import toast from 'react-hot-toast'
 import {
   ScatterChart, Scatter, XAxis, YAxis, Tooltip, ResponsiveContainer,
